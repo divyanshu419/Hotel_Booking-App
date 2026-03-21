@@ -1,57 +1,51 @@
-import { SvixRequest } from "svix/dist/request";
-import User from "../models/User";
-import { messageInRaw, Webhook } from "svix";
-import { request } from "express";
+import User from "../models/User.js";
+import { Webhook } from "svix";
 
 const clerkWebHooks = async (req, res) => {
     try {
-        // Create a Svix instance with clerk webhook secret.
+        const webhook = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
 
-        const whook = new Webhook(process.env.CLERK_WEBHOOK_SECRET)
-        // Gettings Headers
         const headers = {
             "svix-id": req.headers["svix-id"],
-            "svix-timestamps": req.headers["svix-timestamps"],
+            "svix-timestamp": req.headers["svix-timestamp"],
             "svix-signature": req.headers["svix-signature"],
-        }
+        };
 
-        // Verifying Headers
-        await whook.verify(JSON.stringify(req.body), headers)
+        // Verify webhook
+        const event = webhook.verify(JSON.stringify(req.body), headers);
 
-        // Getting data from request body
-        const { data, type } = req.body
+        const { data, type } = event;
+
         const userData = {
             _id: data.id,
-            email: data.email_addresses[0].email_addresses,
-            username: data.first_name + " " + data.last_name,
+            email: data.email_addresses[0].email_address,
+            username: `${data.first_name || ""} ${data.last_name || ""}`,
             image: data.image_url,
-        }
-        // Switch case for different url
+        };
 
         switch (type) {
-            case "user.created": {
-                await User.create(userData)
+            case "user.created":
+                await User.create(userData);
                 break;
-            }
-            case "user.updated": {
-                await User.findByIdAndUpdate(data.id, userData)
+
+            case "user.updated":
+                await User.findByIdAndUpdate(data.id, userData);
                 break;
-            }
-            case "user.deleted": {
-                await User.findByIdAndDelete(data.id)
+
+            case "user.deleted":
+                await User.findByIdAndDelete(data.id);
                 break;
-            }
 
             default:
-                break;
+                console.log("Unhandled event:", type);
         }
-        res.json({ success: true, message: "Webhook Recieved" })
 
+        res.json({ success: true });
 
     } catch (error) {
         console.log(error.message);
-        res.json({ success: false, message: error.message })
+        res.status(400).json({ success: false, message: error.message });
     }
-}
+};
 
 export default clerkWebHooks;
